@@ -6,8 +6,12 @@ load_dotenv()
 
 class SessionManager:
     def __init__(self, host=os.getenv("REDIS_HOST"), port=18542,  expiry_seconds=120):
-        self.client = redis.Redis(host=host, port=port,username="default",
-    password=os.getenv("REDIS_PASSWORD") ,decode_responses=True)
+        self.client = redis.Redis(host=host,
+                                  port=port,username="default",
+                                  password=os.getenv("REDIS_PASSWORD") 
+                                  ,decode_responses=True, ssl=True,ssl_cert_reqs=None,
+                                  ssl_check_hostname=False  )
+        print(self.client, "Redis client initialized")
         self.expiry_seconds = expiry_seconds
 
     def session_exists(self, session_id: str) -> bool:
