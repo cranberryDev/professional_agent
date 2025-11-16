@@ -2,7 +2,10 @@ from dotenv import load_dotenv
 import getpass
 import os
 import uuid
-from fastapi import FastAPI
+import PyPDF2
+import docx
+from fastapi import FastAPI, File, UploadFile, Form
+from typing import Optional
 from fastapi.responses import FileResponse
 from agent import get_agent_response
 from main_functions import ChatRequest
@@ -44,20 +47,36 @@ def redis_health():
         return {"redis": "not connected", "error": str(e)}
 
 @app.post("/chatagent")
-def chat_agent(request: ChatRequest):
+async def chat_agent(userchat: str = Form(...),
+    session_id: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None)):
     print("inside chat agent")
-    session_id = request.session_id or str(uuid.uuid4())
+    file_text = ""
+    if file:
+        if file.filename.endswith(".pdf"):
+            reader = PyPDF2.PdfReader(file.file)
+            file_text = " ".join(page.extract_text() for page in reader.pages if page.extract_text())
+        elif file.filename.endswith(".docx"):
+            doc = docx.Document(file.file)
+            file_text = " ".join([para.text for para in doc.paragraphs])
+        else:
+            file_text = (await file.read()).decode("utf-8", errors="ignore")
+
+    # Combine userchat and file_text for agent
+    agent_input = userchat + "\n\n" + file_text if file_text else userchat
+
+    session_id = session_id or str(uuid.uuid4())
 
     # Check if session exists in Redis
     if session_mgr.session_exists(session_id):
         # Append user message to existing session
-        session_mgr.add_message(session_id, "user", request.userchat)
+        session_mgr.add_message(session_id, "user", userchat)
     else:
         # Create new session and add user message
         session_mgr.create_session(session_id)
-        session_mgr.add_message(session_id, "user", request.userchat)
+        session_mgr.add_message(session_id, "user", userchat)
 
-    response = get_agent_response(user_input=request.userchat)
+    response = get_agent_response(user_input=agent_input)
     session_mgr.add_message(session_id, "agent", response)
 
     return {"response": response, "session_id": session_id}
